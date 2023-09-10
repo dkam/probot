@@ -4,18 +4,19 @@ OMG another Ruby Robot.txt parser? It was an accident, I didn't mean to make it 
 
 Does this even deserve a gem? Feel free to just copy and paste the single file which implements this - one less dependency eh? 
 
-On the plus side, it has some nice features I don't think the others have.
+On the plus side of this yak shaving, there are some nice features I don't think the others have.
 
-1. Supports consecutive user agents making up a single record:
+1. Support for consecutive user agents making up a single record:
 
 ```txt
-# Block both first-agent and second-agent from the site.
 User-agent: first-agent
 User-agent: second-agent
 Disallow: /
 ```
 
-2. It can select the most specific allow / disallow rule, using rule length as a proxy for specificity. You can also ask it to show you the matching rules and their scores. 
+This record blocks both first-agent and second-agent from the site.
+
+2. It selects the most specific allow / disallow rule, using rule length as a proxy for specificity. You can also ask it to show you the matching rules and their scores. 
 
 ```ruby
 txt = %Q{
@@ -29,6 +30,8 @@ Probot.new(txt).matches("/dir1/dir2/dir3")
 ```
 
 In this case, we can see the Disallow rule with length 15 would be followed.
+
+3. It sets the User-Agent string when fetching robots.txt
 
 ## Installation
 
@@ -45,16 +48,16 @@ If bundler is not being used to manage dependencies, install the gem by executin
 It's straightforward to use. Instantiate it if you'll make a few requests:
 
 ```ruby
-> r = Probot.new('https://booko.info', agent: 'MyAgent')
+> r = Probot.new('https://booko.info', agent: 'BookScraper')
 > r.rules
 =>  {"*"=>{"disallow"=>[/\/search/, /\/products\/search/, /\/.*\/refresh_prices/, /\/.*\/add_to_cart/, /\/.*\/get_prices/, /\/lists\/add/, /\/.*\/add$/, /\/api\//, /\/users\/bits/, /\/users\/create/, /\/prices\//, /\/widgets\/issue/], "allow"=>[], "crawl_delay"=>0, "crawl-delay"=>0.1},
  "YandexBot"=>{"disallow"=>[], "allow"=>[], "crawl_delay"=>0, "crawl-delay"=>300.0}}
 
-> r.allowed?("/abc/add_to_cart")
+> r.allowed?("/abc/refresh_prices")
 => false
 > r.allowed?("https://booko.info/9780765397522/All-Systems-Red")
 => true
-> r.allowed?("https://booko.info/9780765397522/add_to_cart")
+> r.allowed?("https://booko.info/9780765397522/refresh_prices")
 => false
 ```
 

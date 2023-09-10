@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "lib/Probot/version"
+require_relative "lib/probot/version"
 
 Gem::Specification.new do |spec|
   spec.name = "Probot"
@@ -8,13 +8,11 @@ Gem::Specification.new do |spec|
   spec.authors = ["Dan Milne"]
   spec.email = ["d@nmilne.com"]
 
-  spec.summary = "A Robots.txt parser."
-  spec.description = "A more fully featured Robotos.txt parser."
+  spec.summary = "A robots.txt parser."
+  spec.description = "A fully featured robots.txt parser."
   spec.homepage = "http://github.com/dkam/probot"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.0"
-
-  spec.metadata["allowed_push_host"] = "TODO: Set to your gem server 'https://example.com'"
 
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = "http://github.com/dkam/probot"

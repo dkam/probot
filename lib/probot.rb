@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "Probot/version"
-
 require "uri"
 require "net/http"
 
@@ -20,7 +18,7 @@ require "net/http"
 #   Parse a robots.txt file
 #   Find the most specific rule for a given URL. We use the length of the regexp as a proxy for specificity.
 
-class Robots
+class Probot
   attr_reader :rules, :sitemap, :doc
   attr_accessor :agent
 
@@ -145,15 +143,15 @@ class Robots
     end
   end
 
-  def self.allowed?(url, agent: "*") = Robots.new(url, agent: agent).allowed?(url)
+  def self.allowed?(url, agent: "*") = Probot.new(url, agent: agent).allowed?(url)
 end
 
-# Robots.allowed?("https://booko.info/9780765397522/All-Systems-Red")
+# Probot.allowed?("https://booko.info/9780765397522/All-Systems-Red")
 # => true
-# r = Robots.new('https://booko.info', agent: 'YandexBot')
-# r = Robots.new('https://www.allenandunwin.com')
-# $ Robots.new('https://www.amazon.com/').matches("/gp/wishlist/ipad-install/gcrnsts")
+# r = Probot.new('https://booko.info', agent: 'YandexBot')
+# r = Probot.new('https://www.allenandunwin.com')
+# $ Probot.new('https://www.amazon.com/').matches("/gp/wishlist/ipad-install/gcrnsts")
 # => {:disallowed=>{/\/wishlist\//=>10, /\/gp\/wishlist\//=>13, /.*\/gcrnsts/=>10}, :allowed=>{/\/gp\/wishlist\/ipad\-install.*/=>28}}
 #
 # Test with
-# assert Robots.new(nil, doc: %Q{allow: /$\ndisallow: /}).matching_rule('https://example.com/page.htm') == {disallow: /\//}
+# assert Probot.new(nil, doc: %Q{allow: /$\ndisallow: /}).matching_rule('https://example.com/page.htm') == {disallow: /\//}
