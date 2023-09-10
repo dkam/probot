@@ -176,11 +176,19 @@ class TestProbot < Minitest::Test
     assert r.sitemaps.include?("https://example.com/sitemapxml2.xml")
   end
 
+  # Sitemaps should be absolute URLs, but we'll accept relative URLs and make them absolute.
+  # However, we need to test both scenarios - when we know the site, and when we don't because we're parsing a robots.txt file.
+  # This test is a little gross, reaching into the guts of the class, but it's the easiest way to test this.
   def test_absolute_sitemaps
     txt = %(User-agent: *\nSitemap: /sitemapxml.xml\nSitemap: /sitemapxml2.xml\n\n)
 
     r = Probot.new(txt)
-    # We have to manually set the site, as we're not parsing a URL - then we need to reset the sitemaps array and reparse the doc.
+    assert_equal 2, r.sitemaps.length
+    assert r.sitemaps.include?("/sitemapxml.xml"), "expected /sitemapxml.xml, got #{r.sitemaps}"
+    assert r.sitemaps.include?("/sitemapxml2.xml"), "expected /sitemapxml2.xml, got #{r.sitemaps}"
+
+    # We have to manually set the site, as we're not parsing a URL - then we need to reset the sitemaps array and reparse the doc. Gross.
+    r = Probot.new(txt)
     r.site = URI("https://example.com")
     r.sitemaps = []
     r.parse(r.doc)
