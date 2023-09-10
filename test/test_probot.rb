@@ -25,7 +25,7 @@ class TestProbot < Minitest::Test
       Disallow: /noblah/
       Allow: /cart/
       ),
-      sitemap: "/sitemap.xml",
+      sitemaps: ["http://www.allenandunwin.com/sitemap.xml"],
       found_agents: ["*", "FooBot", "BlahBot", "YadaBot"],
       tests: [
         {
@@ -51,7 +51,7 @@ class TestProbot < Minitest::Test
       Allow: /    # comment
       Sitemap: http://example.com/sitemap.xml
       ),
-      sitemap: "/sitemap.xml",
+      sitemaps: ["http://example.com/sitemap.xml"],
       found_agents: ["*"],
       tests: [
         {
@@ -85,7 +85,7 @@ class TestProbot < Minitest::Test
       sitemap: /sitemapxml.xml
 
       ),
-      sitemap: "/sitemapxml.xml",
+      sitemaps: ["/sitemapxml.xml"],
       found_agents: ["*", "rubytest"],
       tests: [
         {
@@ -103,7 +103,7 @@ class TestProbot < Minitest::Test
       r = Probot.new(test_case[:txt])
 
       assert_equal test_case[:found_agents], r.found_agents, "found_agents for test #{ind}"
-      assert_equal test_case[:sitemap], r.sitemap, "sitemap for test #{ind}"
+      assert_equal test_case[:sitemaps], r.sitemaps, "sitemap for test #{ind}"
 
       test_case[:tests].each do |tst|
         r = Probot.new(test_case[:txt], agent: tst[:agent])
@@ -166,5 +166,27 @@ class TestProbot < Minitest::Test
     assert r.allowed?("/dir/home.php") == false
     assert r.allowed?("/dir/page") == true
     assert r.allowed?("/dir/page?var") == false
+  end
+
+  def test_multiple_sitemaps
+    txt = %(User-agent: *\nSitemap: https://example.com/sitemapxml.xml\nSitemap: https://example.com/sitemapxml2.xml\n\n)
+    r = Probot.new(txt)
+    assert_equal 2, r.sitemaps.length
+    assert r.sitemaps.include?("https://example.com/sitemapxml.xml")
+    assert r.sitemaps.include?("https://example.com/sitemapxml2.xml")
+  end
+
+  def test_absolute_sitemaps
+    txt = %(User-agent: *\nSitemap: /sitemapxml.xml\nSitemap: /sitemapxml2.xml\n\n)
+
+    r = Probot.new(txt)
+    # We have to manually set the site, as we're not parsing a URL - then we need to reset the sitemaps array and reparse the doc.
+    r.site = URI("https://example.com")
+    r.sitemaps = []
+    r.parse(r.doc)
+
+    assert_equal 2, r.sitemaps.length
+    assert r.sitemaps.include?("https://example.com/sitemapxml.xml"), "expected https://example.com/sitemapxml.xml, got #{r.sitemaps}"
+    assert r.sitemaps.include?("https://example.com/sitemapxml2.xml"), "expected https://example.com/sitemapxml2.xml, got #{r.sitemaps}"
   end
 end

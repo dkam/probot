@@ -19,8 +19,8 @@ require "net/http"
 #   Find the most specific rule for a given URL. We use the length of the regexp as a proxy for specificity.
 
 class Probot
-  attr_reader :rules, :sitemap, :doc
-  attr_accessor :agent
+  attr_reader :rules, :doc
+  attr_accessor :agent, :sitemaps, :site
 
   def initialize(data, agent: "*")
     raise ArgumentError, "The first argument must be a string" unless data.is_a?(String)
@@ -30,8 +30,8 @@ class Probot
     @current_agents = ["*"]
     @current_agents.each { |agent| @rules[agent] ||= {"disallow" => [], "allow" => [], "crawl_delay" => 0} }
     @sitemaps = []
-
-    @doc = data.start_with?("http") ? fetch_robots_txt(data) : data
+    @site = URI(data) if data.start_with?("http")
+    @doc = @site.nil? ? data : fetch_robots_txt(@site)
     parse(@doc)
   end
 
@@ -90,11 +90,11 @@ class Probot
       end
 
       # All Regex characters are escaped, then we unescape * and $ as they may used in robots.txt
-
       if data.allow? || data.disallow?
         @current_agents.each { |agent| rules[agent][data.key] << Regexp.new(Regexp.escape(data.value).gsub('\*', ".*").gsub('\$', "$")) }
 
-        subsequent_agent = false # When user-agent strings are found on consecutive lines, they are considered to be part of the same record. Google ignores crawl_delay.
+        # When user-agent strings are found on consecutive lines, they are considered to be part of the same record. Google ignores crawl_delay.
+        subsequent_agent = false
         next
       end
 
@@ -103,8 +103,11 @@ class Probot
         next
       end
 
+      # Ensure we have an absolute URL
       if data.sitemap?
-        @sitemap = URI(data.value).path
+        sitemap_uri = URI(data.value)
+        sitemap_uri = sitemap_uri.host.nil? ? URI.join(*[site, sitemap_uri].compact) : sitemap_uri
+        @sitemaps << sitemap_uri.to_s
         next
       end
 
