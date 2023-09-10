@@ -3,7 +3,7 @@
 require_relative "lib/probot/version"
 
 Gem::Specification.new do |spec|
-  spec.name = "Probot"
+  spec.name = "probot"
   spec.version = Probot::VERSION
   spec.authors = ["Dan Milne"]
   spec.email = ["d@nmilne.com"]
