@@ -108,6 +108,7 @@ class Probot
         sitemap_uri = URI(data.value)
         sitemap_uri = sitemap_uri.host.nil? ? URI.join(*[site, sitemap_uri].compact) : sitemap_uri
         @sitemaps << sitemap_uri.to_s
+        @sitemaps.uniq!
         next
       end
 
