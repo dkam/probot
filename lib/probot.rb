@@ -2,6 +2,7 @@
 
 require "uri"
 require "net/http"
+require_relative "probot/version"
 
 # https://moz.com/learn/seo/robotstxt
 # https://stackoverflow.com/questions/45293419/order-of-directives-in-robots-txt-do-they-overwrite-each-other-or-complement-ea
