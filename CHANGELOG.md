@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [0.4.0] - 2024-10-31
+
+- Ensure VERISON is available
+
 ## [0.3.0] - 2023-09-18
 
 - Only return unique sitemaps.
