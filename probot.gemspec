@@ -13,6 +13,7 @@ Gem::Specification.new do |spec|
   spec.homepage = "http://github.com/dkam/probot"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.0"
+  gem.platform      = Gem::Platform::RUBY
 
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = "http://github.com/dkam/probot"
