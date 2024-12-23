@@ -144,6 +144,7 @@ class TestProbot < Minitest::Test
 
   def test_empty_allow_disallow
     assert Probot.new(%(User-agent: *\nAllow:)).rules.dig("*", "allow").empty?
+    assert Probot.new(%(User-agent: *\nAllow:\n\n)).rules.dig("*", "allow").empty?
     assert Probot.new(%(User-agent: *\nDisallow:)).rules.dig("*", "disallow").empty?
     assert Probot.new(%(User-agent: *\nDisallow:\n\n)).rules.dig("*", "disallow").empty?
   end
