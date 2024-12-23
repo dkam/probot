@@ -31,6 +31,7 @@ class Probot
     @current_agents = ["*"]
     @current_agents.each { |agent| @rules[agent] ||= {"disallow" => [], "allow" => [], "crawl_delay" => 0} }
     @sitemaps = []
+
     @site = URI(data) if data.start_with?("http")
     @doc = @site.nil? ? data : fetch_robots_txt(@site)
     parse(@doc)
@@ -92,7 +93,9 @@ class Probot
 
       # All Regex characters are escaped, then we unescape * and $ as they may used in robots.txt
       if data.allow? || data.disallow?
-        @current_agents.each { |agent| rules[agent][data.key] << Regexp.new(Regexp.escape(data.value).gsub('\*', ".*").gsub('\$', "$")) }
+        @current_agents.each do |agent|
+          rules[agent][data.key] << Regexp.new(Regexp.escape(data.value).gsub('\*', ".*").gsub('\$', "$")) unless data.value.nil?
+        end
 
         # When user-agent strings are found on consecutive lines, they are considered to be part of the same record. Google ignores crawl_delay.
         subsequent_agent = false
@@ -128,6 +131,8 @@ class Probot
 
     def clean_value = raw_value.split("#").first&.strip
 
+    def clean_url = clean_value&.then { URI(_1).to_s }
+
     def agent? = key == "user-agent"
 
     def disallow? = key == "disallow"
@@ -140,10 +145,12 @@ class Probot
 
     def value
       return clean_value.to_f if crawl_delay?
-      return URI(clean_value).to_s if disallow? || allow?
+      return clean_url if disallow? || allow?
 
       raw_value
     rescue URI::InvalidURIError
+      raw_value
+    rescue ArgumentError
       raw_value
     end
   end

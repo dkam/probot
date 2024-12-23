@@ -95,6 +95,19 @@ class TestProbot < Minitest::Test
           crawl_delay: 0
         }
       ]
+    },
+    {
+      txt: %("User-agent: *\nDisallow: /wp/wp-admin/\nAllow: /wp/wp-admin/admin-ajax.php\n\nUser-agent: *\nDisallow: /wp-content/uploads/wpo/wpo-plugins-tables-list.json\n\n# START YOAST BLOCK\n# ---------------------------\nUser-agent: *\nDisallow:\n\nSitemap: https://prhinternationalsales.com/sitemap_index.xml\n# ---------------------------\n# END YOAST BLOCK"),
+      sitemaps: ["https://prhinternationalsales.com/sitemap_index.xml"],
+      found_agents: ["*"],
+      tests: [
+        {
+          agent: "*",
+          allowed: ["/wp/wp-admin/admin-ajax.php"],
+          disallowed: ["/wp/wp-admin/", "/wp-content/uploads/wpo/wpo-plugins-tables-list.json"],
+          crawl_delay: 0
+        }
+      ]
     }
   ].freeze
 
@@ -132,6 +145,7 @@ class TestProbot < Minitest::Test
   def test_empty_allow_disallow
     assert Probot.new(%(User-agent: *\nAllow:)).rules.dig("*", "allow").empty?
     assert Probot.new(%(User-agent: *\nDisallow:)).rules.dig("*", "disallow").empty?
+    assert Probot.new(%(User-agent: *\nDisallow:\n\n)).rules.dig("*", "disallow").empty?
   end
 
   def test_consecutive_user_agents
