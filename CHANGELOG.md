@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [0.5.0] - 2024-12-24
+
+- Fix bug with Disallow rule containing empty line
+
 ## [0.4.0] - 2024-10-31
 
 - Ensure VERISON is available
