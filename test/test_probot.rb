@@ -134,13 +134,16 @@ class TestProbot < Minitest::Test
 
   # https://developers.google.com/search/docs/crawling-indexing/robots/robots_txt#url-matching-based-on-path-values
   def test_googles_tests
-    assert Probot.new(%(allow: /p\ndisallow: /)).matching_rule("https://example.com/page") == {allow: /\/p/}
-    assert Probot.new(%(allow: /folder\ndisallow: /folder)).matching_rule("https://example.com/folder/page") == {allow: /\/folder/}
-    assert Probot.new(%(allow: /page\ndisallow: /*.htm)).matching_rule("https://example.com/page.htm") == {disallow: /\/.*\.htm/}
-    assert Probot.new(%(allow: /page\ndisallow: /*.ph)).matching_rule("https://example.com/page.php5") == {disallow: /\/.*\.ph/}  # FAIL
-    assert Probot.new(%(allow: /$\ndisallow: /)).matching_rule("https://example.com/") == {allow: /\/$/}
-    assert Probot.new(%(allow: /$\ndisallow: /)).matching_rule("https://example.com/page.htm") == {disallow: /\//}
+    assert_equal({allow: "/p"}, rule_value(Probot.new(%(allow: /p\ndisallow: /)).matching_rule("https://example.com/page")))
+    assert_equal({allow: "/folder"}, rule_value(Probot.new(%(allow: /folder\ndisallow: /folder)).matching_rule("https://example.com/folder/page")))
+    assert_equal({disallow: "/*.htm"}, rule_value(Probot.new(%(allow: /page\ndisallow: /*.htm)).matching_rule("https://example.com/page.htm")))
+    # Both patterns are 5 octets long. A tie goes to the least strict rule (RFC 9309 2.2.2).
+    assert_equal({allow: "/page"}, rule_value(Probot.new(%(allow: /page\ndisallow: /*.ph)).matching_rule("https://example.com/page.php5")))
+    assert_equal({allow: "/$"}, rule_value(Probot.new(%(allow: /$\ndisallow: /)).matching_rule("https://example.com/")))
+    assert_equal({disallow: "/"}, rule_value(Probot.new(%(allow: /$\ndisallow: /)).matching_rule("https://example.com/page.htm")))
   end
+
+  def rule_value(matching_rule) = matching_rule.transform_values(&:value)
 
   def test_empty_allow_disallow
     assert Probot.new(%(User-agent: *\nAllow:)).rules.dig("*", "allow").empty?
