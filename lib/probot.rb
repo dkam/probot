@@ -4,12 +4,14 @@ require "uri"
 require "net/http"
 require_relative "probot/version"
 
+# https://www.rfc-editor.org/rfc/rfc9309.html - the Robots Exclusion Protocol
 # https://moz.com/learn/seo/robotstxt
 # https://stackoverflow.com/questions/45293419/order-of-directives-in-robots-txt-do-they-overwrite-each-other-or-complement-ea
 # https://developers.google.com/search/docs/crawling-indexing/robots/create-robots-txt
 # https://developers.google.com/search/docs/crawling-indexing/robots/robots_txt
 #
-# https://github.com/google/robotstxt  - Google's official parser
+# https://github.com/google/robotstxt  - Google's official parser. test/test_google_conformance.rb
+# ports its RFC test cases.
 
 # Note: User-agent found on consecutive lines are considered to be part of the same record.
 # Note: Google ignores crawl_delay
@@ -17,9 +19,53 @@ require_relative "probot/version"
 
 # Two main parts of this class:
 #   Parse a robots.txt file
-#   Find the most specific rule for a given URL. We use the length of the regexp as a proxy for specificity.
+#   Find the most specific rule for a given URL. The rule with the longest pattern wins, and Allow wins a tie.
 
 class Probot
+  # A single Allow or Disallow line. It's a Regexp anchored to the start of the
+  # path, so it works anywhere the old bare Regexp rules did, and it remembers
+  # where it came from so callers can point at the line that decided a URL.
+  class Rule < Regexp
+    attr_reader :directive, :value, :line, :agents
+
+    def initialize(value, directive:, line: nil, agents: [])
+      @directive = directive
+      @value = value
+      @line = line
+      @agents = agents
+      super(self.class.pattern(value))
+    end
+
+    def allow? = directive == "allow"
+
+    def disallow? = directive == "disallow"
+
+    # Specificity is the length of the pattern in octets (RFC 9309 2.2.2).
+    def length = Probot.escape(value).bytesize
+
+    def to_s = "#{directive.capitalize}: #{value}"
+
+    # `*` matches any run of characters. `$` anchors the end, but only as the
+    # last character; anywhere else it's literal.
+    def self.pattern(value)
+      escaped = Probot.escape(value)
+      anchored = escaped.end_with?("$")
+      escaped = escaped.delete_suffix("$") if anchored
+      source = escaped.split("*", -1).map { Regexp.escape(_1) }.join(".*")
+      "\\A#{source}#{"\\z" if anchored}"
+    end
+  end
+
+  # Typos Google accepts for directive names, so a misspelled line still means what it was meant to.
+  KEY_ALIASES = {
+    "useragent" => "user-agent", "user agent" => "user-agent",
+    "dissallow" => "disallow", "dissalow" => "disallow", "disalow" => "disallow",
+    "diasllow" => "disallow", "disallaw" => "disallow"
+  }.freeze
+
+  # Full or partial UTF-8 byte order mark at the very start of the file.
+  BOM = /\A(?:\xEF\xBB\xBF|\xEF\xBB|\xEF)/n
+
   attr_reader :rules, :doc
   attr_accessor :agent, :sitemaps, :site
 
@@ -45,17 +91,17 @@ class Probot
     ""
   end
 
-  def crawl_delay = rules.dig(@agent, "crawl_delay")
+  def crawl_delay = agent_rules&.dig("crawl_delay")
 
   def found_agents = rules.keys
 
-  def disallowed = rules.dig(@agent, "disallow") || rules.dig("*", "disallow")
+  def disallowed = agent_rules&.dig("disallow") || rules.dig("*", "disallow")
 
-  def allowed = rules.dig(@agent, "allow") || rules.dig("*", "allow")
+  def allowed = agent_rules&.dig("allow") || rules.dig("*", "allow")
 
-  def disallowed_matches(url) = disallowed.select { |disallowed_url| url.match?(disallowed_url) }.to_h { |rule| [rule, pattern_length(rule)] }
+  def disallowed_matches(url) = disallowed.select { |rule| rule.match?(self.class.path(url)) }.to_h { |rule| [rule, pattern_length(rule)] }
 
-  def allowed_matches(url) = allowed.select { |allowed_url| url.match?(allowed_url) }.to_h { |rule| [rule, pattern_length(rule)] }
+  def allowed_matches(url) = allowed.select { |rule| rule.match?(self.class.path(url)) }.to_h { |rule| [rule, pattern_length(rule)] }
 
   def matches(url) = {disallowed: disallowed_matches(url), allowed: allowed_matches(url)}
 
@@ -64,6 +110,9 @@ class Probot
   def allowed_best(url) = allowed_matches(url).max_by { |k, v| v }
 
   def matching_rule(url) = (disallowed_best(url)&.last.to_i > allowed_best(url)&.last.to_i) ? {disallow: disallowed_best(url)&.first} : {allow: allowed_best(url)&.first}
+
+  # The Rule that decides the URL for this agent, or nil when no rule matches (which means allowed).
+  def decisive_rule(url) = matching_rule(url).values.first
 
   # If a URL is not disallowed, it is allowed - so we check if it is explictly disallowed and if not, it's allowed.
   def allowed?(url) = !disallowed?(url)
@@ -74,10 +123,11 @@ class Probot
     # We need to handle consective user-agent lines, which are considered to be part of the same record.
     subsequent_agent = false
 
-    doc.lines.each do |line|
-      next if line.start_with?("#") || !line.include?(":") || line.split(":").length < 2
+    doc = doc.b.sub(BOM, "").force_encoding(Encoding::UTF_8).scrub
 
+    doc.each_line.with_index(1) do |line, number|
       data = ParsedLine.new(line)
+      next if data.key.nil? || data.raw_value.nil?
 
       if data.agent?
         if subsequent_agent
@@ -91,10 +141,10 @@ class Probot
         next
       end
 
-      # All Regex characters are escaped, then we unescape * and $ as they may used in robots.txt
       if data.allow? || data.disallow?
-        @current_agents.each do |agent|
-          rules[agent][data.key] << Regexp.new(Regexp.escape(data.value).gsub('\*', ".*").gsub('\$', "$")) unless data.value.nil?
+        unless data.value.empty?
+          rule = Rule.new(data.value, directive: data.key, line: number, agents: @current_agents.dup)
+          @current_agents.each { |agent| rules[agent][data.key] << rule }
         end
 
         # When user-agent strings are found on consecutive lines, they are considered to be part of the same record. Google ignores crawl_delay.
@@ -109,7 +159,7 @@ class Probot
 
       # Ensure we have an absolute URL
       if data.sitemap?
-        sitemap_uri = URI(data.value)
+        sitemap_uri = URI(data.raw_value)
         sitemap_uri = sitemap_uri.host.nil? ? URI.join(*[site, sitemap_uri].compact) : sitemap_uri
         @sitemaps << sitemap_uri.to_s
         @sitemaps.uniq!
@@ -120,18 +170,72 @@ class Probot
     end
   end
 
-  def pattern_length(regexp) = regexp.source.gsub(/(\\[\*\$\.])/, "*").length
+  def pattern_length(rule) = rule.length
 
-  # ParedLine Note: In the case of 'Sitemap: https://example.com/sitemap.xml', raw_value needs to rejoin after splitting the URL.
+  # The rules for this agent, merged across every group naming it. Agents match on
+  # their product token, case-insensitively: "Twitterbot/1.0" obeys a group for
+  # "twitterbot". Nil when no group names the agent, so the "*" group applies.
+  def agent_rules
+    return rules["*"] if agent == "*"
+
+    token = self.class.product_token(agent)
+    groups = rules.select { |name, _| name != "*" && self.class.product_token(name) == token }.values
+    return if token.nil? || groups.empty?
+
+    groups.each_with_object({"disallow" => [], "allow" => [], "crawl_delay" => 0}) do |group, merged|
+      merged["disallow"] |= group["disallow"]
+      merged["allow"] |= group["allow"]
+      merged["crawl_delay"] = group["crawl_delay"] if group["crawl_delay"].to_f.positive?
+    end
+  end
+
+  # The leading run of [a-zA-Z_-] characters, downcased (RFC 9309 2.2.1).
+  def self.product_token(agent) = agent.to_s[/\A[a-zA-Z_-]+/]&.downcase
+
+  # What rules are matched against: the path, params and query of a URL, without the fragment.
+  # Paths are passed through as given.
+  def self.path(url)
+    return url unless url.match?(%r{\A[a-z][a-z0-9+.-]*://}i)
+
+    uri = URI(url)
+    path = uri.path.to_s.empty? ? "/" : uri.path
+    uri.query ? "#{path}?#{uri.query}" : path
+  rescue URI::InvalidURIError
+    # Unencoded URLs (a raw "ツ") still have a path; take everything after the authority.
+    path = url.sub(%r{\A[a-z][a-z0-9+.-]*://[^/?#]*}i, "").sub(/#.*/m, "")
+    path.start_with?("/") ? path : "/#{path}"
+  end
+
+  # Percent-encode octets outside US-ASCII and normalize existing escapes to upper case.
+  def self.escape(value)
+    value.b.gsub(/[^\x00-\x7F]/n) { |byte| format("%%%02X", byte.ord) }
+      .gsub(/%[0-9a-fA-F]{2}/, &:upcase)
+      .force_encoding(Encoding::UTF_8)
+  end
+
+  # ParsedLine Note: In the case of 'Sitemap: https://example.com/sitemap.xml', raw_value needs to rejoin after splitting the URL.
 
   ParsedLine = Struct.new(:input_string) do
-    def key = input_string.split(":").first&.strip&.downcase
+    # Comments run from # to the end of the line, wherever they start.
+    def content = input_string.sub(/#.*/m, "").strip
 
-    def raw_value = input_string.split(":").slice(1..)&.join(":")&.strip
+    # "key: value", or "key value" for a line missing its colon.
+    def parts
+      @parts ||= if content.include?(":")
+        content.split(":", 2).map(&:strip)
+      else
+        content.split(/\s+/, 2)
+      end
+    end
 
-    def clean_value = raw_value.split("#").first&.strip
+    def key
+      key = parts.first&.downcase
+      KEY_ALIASES.fetch(key, key)
+    end
 
-    def clean_url = clean_value&.then { URI(_1).to_s }
+    def raw_value = (parts.length == 2) ? parts.last : nil
+
+    def clean_value = raw_value
 
     def agent? = key == "user-agent"
 
@@ -145,25 +249,10 @@ class Probot
 
     def value
       return clean_value.to_f if crawl_delay?
-      return clean_url if disallow? || allow?
 
-      raw_value
-    rescue URI::InvalidURIError
-      raw_value
-    rescue ArgumentError
       raw_value
     end
   end
 
   def self.allowed?(url, agent: "*") = Probot.new(url, agent: agent).allowed?(url)
 end
-
-# Probot.allowed?("https://booko.info/9780765397522/All-Systems-Red")
-# => true
-# r = Probot.new('https://booko.info', agent: 'YandexBot')
-# r = Probot.new('https://www.allenandunwin.com')
-# $ Probot.new('https://www.amazon.com/').matches("/gp/wishlist/ipad-install/gcrnsts")
-# => {:disallowed=>{/\/wishlist\//=>10, /\/gp\/wishlist\//=>13, /.*\/gcrnsts/=>10}, :allowed=>{/\/gp\/wishlist\/ipad\-install.*/=>28}}
-#
-# Test with
-# assert Probot.new(nil, doc: %Q{allow: /$\ndisallow: /}).matching_rule('https://example.com/page.htm') == {disallow: /\//}
